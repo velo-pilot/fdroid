@@ -32,6 +32,7 @@ and the CI storage zone's password, so a leak there can't change the release rep
 | `scripts/build-repo.py` | Writes the metadata with each release's notes as its changelog, runs `fdroid update` to sign the index |
 | `scripts/bunny-sync.py` | Uploads the repository to Bunny Storage: changed files only, APKs first, the index last, then deletes what's gone |
 | `.github/workflows/publish.yml` | Builds and publishes the beta and dev repositories |
+| `.github/workflows/sync-resources.yml` | Keeps velo-pilot/resources, the fork of OsmAnd-resources, up to date |
 | `release.sh`, `Containerfile` | Builds and publishes the release repository from a local checkout |
 | `infra/` | bunny.net and GitHub setup of both repositories, as OpenTofu |
 
@@ -69,6 +70,15 @@ repository holds. The jobs run in the GitHub `dev` environment, which only accep
 purge the CDN cache (that needs the account API key); both pull zones keep `/fdroid-beta/` and
 `/fdroid-dev/` cached for a minute instead.
 
+## The OsmAnd-resources fork
+
+velo-pilot/android builds with [OsmAnd-resources](https://github.com/osmandapp/OsmAnd-resources) (routing,
+rendering styles, POI types, voice). [velo-pilot/resources](https://github.com/velo-pilot/resources) is a fork
+of it in case upstream goes away. `.github/workflows/sync-resources.yml` brings its `master` up to upstream's
+every night (and on demand: Actions > Sync velo-pilot/resources > Run workflow) with GitHub's merge-upstream API,
+which never rewrites the fork. If upstream disappears or rewrites its history, the job fails and the fork keeps
+what it had. Keep the fork's `master` identical to upstream; put changes of our own on other branches.
+
 ## Infrastructure (OpenTofu)
 
 `infra/` defines everything the repositories and the Android builds run on, so change these settings
@@ -77,7 +87,7 @@ there, not in the bunny.net or GitHub UI (the next plan would revert UI edits):
 | File | What |
 | --- | --- |
 | `infra/bunny.tf` | Storage zones for the release repository and the CI (beta and dev) repositories, the pull zone on `cdn.velopilot.be` (origin: the release zone) with an edge rule that forwards `/fdroid-beta/` and `/fdroid-dev/` to the CI zone's own pull zone, and the `cdn` record in the velopilot.be DNS zone (which velo-pilot/site manages) |
-| `infra/github.tf` | The `dev` environment of velo-pilot/fdroid, the `dev` and `release` environments of velo-pilot/android, and their variables and secrets |
+| `infra/github.tf` | The `dev` and `mirror` environments of velo-pilot/fdroid, the `dev` and `release` environments of velo-pilot/android, and their variables and secrets |
 | `infra/secrets.enc.yaml` | Secrets, encrypted with [SOPS](https://github.com/getsops/sops) for the PGP keys in `.sops.yaml` |
 | `infra/repo-key.sh` | Creates the repository keys and prints their fingerprints |
 | `infra/apk-key.sh` | Creates the APK signing keys and prints their certificate fingerprints |
@@ -97,6 +107,8 @@ the CI keys. Keys in `infra/secrets.enc.yaml`:
 - `fdroid_dispatch_token`: for the workflows of velo-pilot/android, a fine-grained token for
   velo-pilot/fdroid with read/write access to *Contents*: `infra/new-github-token.sh dispatch`.
   Optional: without it, the schedule picks up new builds.
+- `resources_sync_token`: for the sync job, a fine-grained token for velo-pilot/resources with read/write
+  access to *Contents* and *Workflows*: `infra/new-github-token.sh resources`.
 - `fdroid_dev_keystore_base64`, `fdroid_dev_keystore_password`: the CI repository key, from
   `infra/repo-key.sh new dev`.
 - `apk_dev_keystore_*`, `apk_release_keystore_*`: the APK signing keys of VeloPilot Dev, and of
@@ -110,6 +122,7 @@ sudo pacman -S --needed opentofu sops podman rbw
 infra/new-github-token.sh infra
 infra/new-github-token.sh releases
 infra/new-github-token.sh dispatch
+infra/new-github-token.sh resources
 infra/repo-key.sh new dev
 infra/repo-key.sh new release    # stores the key in Bitwarden; back up the vault
 infra/apk-key.sh new dev

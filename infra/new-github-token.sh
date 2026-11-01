@@ -9,6 +9,8 @@
 #                                             releases of velo-pilot/android (while it is private)
 #        infra/new-github-token.sh dispatch   fdroid_dispatch_token: the workflows of velo-pilot/android
 #                                             start the publish jobs of velo-pilot/fdroid
+#        infra/new-github-token.sh resources  resources_sync_token: the sync job keeps velo-pilot/resources,
+#                                             the fork of osmandapp/OsmAnd-resources, up to date
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -33,6 +35,12 @@ case "${1:-}" in
     name=velopilot-fdroid-dispatch description="velo-pilot%2Fandroid+starts+the+publish+jobs+of+${owner}%2Ffdroid"
     permissions="contents=write"
     explain="Contents: read and write (repository_dispatch needs it)"
+    ;;
+  resources)
+    key=resources_sync_token repos=(resources)
+    name=velopilot-resources-sync description="Sync+job+in+${owner}%2Ffdroid+keeps+${owner}%2Fresources+up+to+date"
+    permissions="contents=write&workflows=write"
+    explain="Contents, Workflows: read and write (syncs that change upstream's .github/workflows need the latter)"
     ;;
   *)
     sed -n '2,/^set -e/p' "$0" | sed '$d; s/^# \{0,1\}//'

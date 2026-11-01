@@ -1,0 +1,37 @@
+# Keeps velo-pilot/resources up to date: the fork of osmandapp/OsmAnd-resources that VeloPilot keeps in case
+# upstream goes away (velo-pilot/android builds with OsmAnd-resources). Every night it brings the fork's master up to
+# upstream's with GitHub's merge-upstream API, which never rewrites the fork: a force-push or deletion upstream can't
+# take away what it already holds. The job fails instead (e.g. HTTP 409 or 422), and GitHub mails whoever last
+# changed this file.
+#
+# The fork's master stays identical to upstream, so every sync is a fast-forward; VeloPilot's own changes to the
+# resources, if any, go on other branches.
+#
+# The job runs in the "mirror" environment, which only main may use. Its secret RESOURCES_SYNC_TOKEN (managed by
+# OpenTofu in infra/github.tf) can write Contents and Workflows of velo-pilot/resources: syncs that bring changes to
+# upstream's .github/workflows need the latter. It lives here rather than in a public repository because GitHub
+# turns off schedules in public repositories after 60 days without activity.
+
+name: Sync velo-pilot/resources
+
+on:
+  schedule:
+    - cron: "43 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    environment: mirror
+    steps:
+      - name: Bring master up to osmandapp/OsmAnd-resources
+        env:
+          GH_TOKEN: ${{ secrets.RESOURCES_SYNC_TOKEN }}
+        run: |
+          result=$(gh api -X POST repos/velo-pilot/resources/merge-upstream -f branch=master)
+          echo "$result" | jq -r '"\(.merge_type): \(.message)"'
+          if [ "$(echo "$result" | jq -r .merge_type)" = merge ]; then
+            echo "::warning::master of velo-pilot/resources had commits of its own, so it got a merge commit"
+          fi
+          gh api repos/velo-pilot/resources/commits/master \
+            --jq '"master of velo-pilot/resources: \(.sha[0:10]) \(.commit.committer.date) \(.commit.message | split("\n")[0])"'

@@ -105,3 +105,30 @@ resource "github_actions_environment_secret" "android" {
   secret_name = each.value.name
   value       = each.value.value
 }
+
+# The mirror environment of velo-pilot/fdroid that .github/workflows/sync-resources.yml runs in, with the token
+# that keeps velo-pilot/resources (the fork of osmandapp/OsmAnd-resources) up to date. Only main may use it.
+
+resource "github_repository_environment" "mirror" {
+  repository  = local.repository
+  environment = "mirror"
+
+  deployment_branch_policy {
+    protected_branches     = false
+    custom_branch_policies = true
+  }
+}
+
+resource "github_repository_environment_deployment_policy" "mirror_main" {
+  repository     = local.repository
+  environment    = github_repository_environment.mirror.environment
+  branch_pattern = "main"
+}
+
+resource "github_actions_environment_secret" "mirror" {
+  repository  = local.repository
+  environment = github_repository_environment.mirror.environment
+  secret_name = "RESOURCES_SYNC_TOKEN"
+  # infra/new-github-token.sh resources
+  value = local.secrets.resources_sync_token
+}
