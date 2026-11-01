@@ -4,10 +4,10 @@
     build-repo.py <dir>
 
 Reads <dir>/releases.json and <dir>/apks/, runs fdroid update in <dir>/fdroid and
-lays out what goes to the CDN in <dir>/publish/<folder>/. The release repository
-(folder fdroid) holds be.velopilot.app with icon.png, the dev repository (folder
-fdroid-dev) the dev builds be.velopilot.dev with icon-dev.png, under the description
-in metadata/be.velopilot.app.yml with DEV_METADATA on top. In <folder>:
+lays out what goes to the CDN in <dir>/publish/<folder>/. Each channel has its own
+app, icon and repository (CHANNELS); the beta and dev apps get the description in
+metadata/be.velopilot.app.yml with their own name and introduction on top. In
+<folder>:
 
   repo/                  the F-Droid repository: APKs, icons, signed index
   velopilot-latest.apk   a copy of the newest APK, for a stable download link
@@ -17,7 +17,7 @@ The keystore is deleted again when the build ends. Needs fdroidserver (Debian
 package) and keytool.
 
 Environment:
-  CHANNEL                   release (default) or dev
+  CHANNEL                   release (default), beta or dev
   FDROID_KEYSTORE_BASE64    base64 of the PKCS12 keystore that signs the index
   FDROID_KEYSTORE_PASSWORD  its store and key password
   CDN_URL                   public URL of the pull zone (default https://cdn.velopilot.be)
@@ -39,16 +39,24 @@ from fdroidserver import common
 ROOT = Path(__file__).resolve().parent.parent
 CDN_URL = os.environ.get("CDN_URL", "https://cdn.velopilot.be").rstrip("/")
 METADATA = ROOT / "metadata" / "be.velopilot.app.yml"
-CHANNELS = {
-    # folder on the CDN, repository name, key alias (see infra/repo-key.sh), app id, icon
-    "release": ("fdroid", "VeloPilot", "velopilot", "be.velopilot.app", "icon.png"),
-    "dev": ("fdroid-dev", "VeloPilot dev builds", "velopilot-dev", "be.velopilot.dev", "icon-dev.png"),
+BETA_METADATA = {
+    "AutoName": "VeloPilot Beta",
+    "Summary": "Beta versions of VeloPilot, before they are released",
+    "Description": "Beta versions of VeloPilot, to try the next release before it comes out. They install next "
+                   "to the VeloPilot app, with their own settings.\n\n",
 }
 DEV_METADATA = {
     "AutoName": "VeloPilot Dev",
     "Summary": "Development builds of VeloPilot, for testing",
-    "Description": "Development builds of VeloPilot, to try what comes next. They install next to the "
-                   "VeloPilot app, with their own settings, and may break.\n\n",
+    "Description": "Development builds of VeloPilot, of every change, to try what comes next. They install next "
+                   "to the VeloPilot app, with their own settings, and may break.\n\n",
+}
+CHANNELS = {
+    # folder on the CDN, repository name, key alias (see infra/repo-key.sh; beta and dev share the CI key),
+    # app id, icon, metadata on top of metadata/be.velopilot.app.yml
+    "release": ("fdroid", "VeloPilot", "velopilot", "be.velopilot.app", "icon.png", {}),
+    "beta": ("fdroid-beta", "VeloPilot beta", "velopilot-dev", "be.velopilot.beta", "icon-beta.png", BETA_METADATA),
+    "dev": ("fdroid-dev", "VeloPilot dev builds", "velopilot-dev", "be.velopilot.dev", "icon-dev.png", DEV_METADATA),
 }
 # F-Droid shows up to 500 characters of release notes
 CHANGELOG_LIMIT = 500
@@ -67,7 +75,7 @@ def write_private(path, data):
     path.write_bytes(data)
 
 
-def build(work, fdroid, folder, repo_name, key_alias, app_id, icon):
+def build(work, fdroid, folder, repo_name, key_alias, app_id, icon, overrides):
     releases = json.loads((work / "releases.json").read_text())
     if not releases:
         sys.exit("releases.json lists no release, so there is nothing to publish")
@@ -94,9 +102,8 @@ keypass: {{env: FDROID_KEYSTORE_PASSWORD}}
     shutil.copy(ROOT / icon, app_dir / "icon.png")
 
     metadata = yaml.safe_load(METADATA.read_text())
-    if folder == CHANNELS["dev"][0]:
-        description = DEV_METADATA["Description"] + metadata["Description"]
-        metadata.update(DEV_METADATA, Description=description)
+    if overrides:
+        metadata.update(overrides, Description=overrides["Description"] + metadata["Description"])
     # A build entry per APK: the index only carries a version's release notes when the version
     # has one. Never mark an entry "disable": fdroid update deletes the APK of a disabled build.
     metadata["Builds"] = []
@@ -144,7 +151,7 @@ def main():
         sys.exit(__doc__)
     channel = os.environ.get("CHANNEL", "release")
     if channel not in CHANNELS:
-        sys.exit(f"CHANNEL is {channel!r}, expected release or dev")
+        sys.exit(f"CHANNEL is {channel!r}, expected release, beta or dev")
     work = Path(sys.argv[1]).resolve()
     fdroid = work / "fdroid"
     shutil.rmtree(fdroid, ignore_errors=True)

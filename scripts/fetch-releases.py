@@ -6,13 +6,14 @@
                                        release's APK to <dir>/apks/<tag>.apk
 
 Picks the KEEP_RELEASES newest published releases of the channel that have an APK
-asset, oldest first: full releases for the release repository, pre-releases (dev
-builds) for the dev repository. Drafts are skipped. Each release needs exactly one
+asset, oldest first. The channel is in the tag (build-container/ci/version.sh in
+velo-pilot/android): releases vX.Y.Z, betas vX.Y.Z-beta.N and dev builds
+vX.Y.Z-dev.RUN; betas and dev builds are pre-releases. Drafts are skipped. Each release needs exactly one
 .apk asset; its notes become the version's changelog in F-Droid. Without any, it
 writes an empty list: there is nothing to publish yet.
 
 Environment:
-  CHANNEL         release (default) or dev
+  CHANNEL         release (default), beta or dev
   ANDROID_REPO    owner/name of the app repository (default velo-pilot/android)
   GITHUB_TOKEN    token that can read its releases (fine-grained: Contents read);
                   not needed once the repository is public
@@ -22,6 +23,7 @@ Environment:
 import hashlib
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -31,8 +33,15 @@ REPO = os.environ.get("ANDROID_REPO", "velo-pilot/android")
 TOKEN = os.environ.get("GITHUB_TOKEN")
 KEEP = int(os.environ.get("KEEP_RELEASES", "3"))
 CHANNEL = os.environ.get("CHANNEL", "release")
-if CHANNEL not in ("release", "dev"):
-    sys.exit(f"CHANNEL is {CHANNEL!r}, expected release or dev")
+# Tag and whether it is a pre-release, per channel
+CHANNELS = {
+    "release": (r"v\d+\.\d+\.\d+", False),
+    "beta": (r"v\d+\.\d+\.\d+-beta\.\d+", True),
+    "dev": (r"v\d+\.\d+\.\d+-dev\.\d+", True),
+}
+if CHANNEL not in CHANNELS:
+    sys.exit(f"CHANNEL is {CHANNEL!r}, expected release, beta or dev")
+TAG, PRERELEASE = CHANNELS[CHANNEL]
 
 
 def get(url, accept="application/vnd.github+json"):
@@ -55,7 +64,7 @@ def list_releases():
         if not batch:
             break
         for release in batch:
-            if release["draft"] or release["prerelease"] != (CHANNEL == "dev"):
+            if release["draft"] or release["prerelease"] != PRERELEASE or not re.fullmatch(TAG, release["tag_name"]):
                 continue
             apks = [a for a in release["assets"] if a["name"].endswith(".apk")]
             if not apks:
@@ -105,8 +114,7 @@ def main():
 
     releases = list_releases()
     if not releases:
-        kind = "pre-release" if CHANNEL == "dev" else "release"
-        print(f"{REPO} has no published {kind} with an APK yet")
+        print(f"{REPO} has no published {CHANNEL} release with an APK yet")
     (out / "releases.json").write_text(json.dumps(releases, indent=2) + "\n")
     for release in releases:
         print(f"{release['tag']}: {release['apk']['name']} ({release['apk']['size'] // 1_000_000} MB)")

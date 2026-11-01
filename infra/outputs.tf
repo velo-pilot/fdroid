@@ -7,6 +7,7 @@ output "repo_urls" {
   description = "The F-Droid repositories; infra/repo-key.sh fingerprint prints the links to add them."
   value = {
     release = "https://${local.hostname}/fdroid/repo"
+    beta    = "https://${local.hostname}/fdroid-beta/repo"
     dev     = "https://${local.hostname}/fdroid-dev/repo"
   }
 }

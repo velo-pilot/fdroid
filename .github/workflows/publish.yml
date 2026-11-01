@@ -1,22 +1,21 @@
-# Builds the VeloPilot dev F-Droid repository from the pre-releases (dev builds) of
-# velo-pilot/android and publishes it on https://cdn.velopilot.be/fdroid-dev/repo.
+# Builds the VeloPilot dev and beta F-Droid repositories from the GitHub pre-releases of velo-pilot/android and
+# publishes them on https://cdn.velopilot.be/fdroid-dev/repo (dev builds of main, vX.Y.Z-dev.RUN) and
+# https://cdn.velopilot.be/fdroid-beta/repo (betas, vX.Y.Z-beta.N).
 #
-# Only the dev repository is published from here. The release repository is signed with a key
-# that stays in Bitwarden and is published from a local checkout with ./release.sh, so GitHub
-# never holds anything that can change it.
+# Only these two are published from here. The release repository is signed with a key that stays in Bitwarden and
+# is published from a local checkout with ./release.sh, so GitHub never holds anything that can change it.
 #
-# The job runs in the "dev" environment. Its variables (BUNNY_STORAGE_ZONE, BUNNY_STORAGE_HOST)
-# and secrets (BUNNY_STORAGE_PASSWORD, ANDROID_RELEASES_TOKEN, FDROID_KEYSTORE_BASE64,
-# FDROID_KEYSTORE_PASSWORD) are managed by OpenTofu in infra/github.tf. They give access to the
-# dev storage zone and the dev key only. There's no cache purge: the CDN keeps /fdroid-dev/ for
-# a minute (infra/bunny.tf).
+# The jobs run in the "dev" environment. Its variables (BUNNY_STORAGE_ZONE, BUNNY_STORAGE_HOST) and secrets
+# (BUNNY_STORAGE_PASSWORD, ANDROID_RELEASES_TOKEN, FDROID_KEYSTORE_BASE64, FDROID_KEYSTORE_PASSWORD) are managed by
+# OpenTofu in infra/github.tf. They give access to the CI storage zone and the CI key only, which serve and sign both
+# repositories. There's no cache purge: the CDN keeps them for a minute (infra/bunny.tf).
 #
-# A release workflow in velo-pilot/android starts this with a repository_dispatch event of type
-# android-release; the schedule catches pre-releases made without it. Scheduled and dispatched
-# runs stop early when the pre-releases and this repository haven't changed since the last
-# publish (inputs.sha256 on the CDN); pushes to main and "force" always publish.
+# The workflows of velo-pilot/android start this with a repository_dispatch event of type android-release; the
+# schedule catches builds made without it. Scheduled and dispatched runs stop early when the pre-releases and this
+# repository haven't changed since the last publish (inputs.sha256 on the CDN); pushes to main and "force" always
+# publish.
 
-name: Publish dev
+name: Publish dev and beta
 
 on:
   push:
@@ -33,21 +32,25 @@ on:
         default: false
 
 env:
-  CHANNEL: dev
   ANDROID_REPO: velo-pilot/android
   CDN_URL: https://cdn.velopilot.be
   KEEP_RELEASES: 3
 
 jobs:
   publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [dev, beta]
+    name: publish ${{ matrix.channel }}
     runs-on: ubuntu-latest
     # Debian's fdroidserver is newer than Ubuntu's
     container: docker.io/library/debian:trixie-slim
     environment:
       name: dev
-      url: https://cdn.velopilot.be/fdroid-dev/repo/index.html
+      url: https://cdn.velopilot.be/fdroid-${{ matrix.channel }}/repo/index.html
     concurrency:
-      group: fdroid-dev
+      group: fdroid-${{ matrix.channel }}
       cancel-in-progress: false
     steps:
       - name: Install fdroidserver
@@ -58,7 +61,12 @@ jobs:
 
       - uses: actions/checkout@v5
 
-      - name: List pre-releases
+      - name: Channel
+        run: |
+          echo "CHANNEL=${{ matrix.channel }}" >> "$GITHUB_ENV"
+          echo "FOLDER=fdroid-${{ matrix.channel }}" >> "$GITHUB_ENV"
+
+      - name: List ${{ matrix.channel }} releases
         env:
           GITHUB_TOKEN: ${{ secrets.ANDROID_RELEASES_TOKEN }}
         run: python3 scripts/fetch-releases.py list build
@@ -68,13 +76,13 @@ jobs:
         env:
           FORCE: ${{ github.event_name == 'push' || inputs.force == true }}
         run: |
-          hash=$({ find icon.png icon-dev.png metadata scripts -type f -print0 | sort -z | xargs -0 sha256sum; cat build/releases.json; } \
+          hash=$({ find icon*.png metadata scripts -type f -print0 | sort -z | xargs -0 sha256sum; cat build/releases.json; } \
             | sha256sum | cut -d' ' -f1)
           echo "hash=$hash" >> "$GITHUB_OUTPUT"
-          published=$(curl -fsS "$CDN_URL/fdroid-dev/inputs.sha256" 2> /dev/null || true)
+          published=$(curl -fsS "$CDN_URL/$FOLDER/inputs.sha256" 2> /dev/null || true)
           if [ "$(cat build/releases.json)" = "[]" ]; then
             # Keeps whatever the repository holds until the first pre-release
-            echo "No pre-release to publish yet"
+            echo "No $CHANNEL release to publish yet"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           elif [ "$published" = "$hash" ] && [ "$FORCE" != true ]; then
             echo "Nothing changed since the last publish"
@@ -102,4 +110,4 @@ jobs:
           BUNNY_STORAGE_ZONE: ${{ vars.BUNNY_STORAGE_ZONE }}
           BUNNY_STORAGE_HOST: ${{ vars.BUNNY_STORAGE_HOST }}
           BUNNY_STORAGE_PASSWORD: ${{ secrets.BUNNY_STORAGE_PASSWORD }}
-        run: python3 scripts/bunny-sync.py build/publish/fdroid-dev fdroid-dev
+        run: python3 scripts/bunny-sync.py "build/publish/$FOLDER" "$FOLDER"

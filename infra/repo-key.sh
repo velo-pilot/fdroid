@@ -13,7 +13,7 @@
 #
 # Users trust a repository by its key's fingerprint: if the key changes, they have to
 # remove the repository and add it again, so back up the Bitwarden vault. Bitwarden
-# goes through rbw; keytool runs in a container (podman), so no JDK is needed.
+# goes through rbw; keytool comes from a local JDK or a container (podman).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -31,8 +31,13 @@ if command -v selinuxenabled >/dev/null && selinuxenabled; then
   label=":z"
 fi
 
+# A local JDK's keytool if there is one, else the container's
 keytool() {
-  podman run --rm -v "$work:/keys$label" -w /keys -e KEY_PASSWORD "$image" keytool "$@"
+  if command -v keytool >/dev/null; then
+    (cd "$work" && command keytool "$@")
+  else
+    podman run --rm -v "$work:/keys$label" -w /keys -e KEY_PASSWORD "$image" keytool "$@"
+  fi
 }
 
 sops_secret() {

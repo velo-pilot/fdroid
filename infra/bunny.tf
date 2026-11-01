@@ -3,9 +3,9 @@
 # - release: the release repository (/fdroid/), uploaded from a local checkout by
 #   release.sh. Its password never leaves this state. It is the origin of the
 #   pull zone on cdn.velopilot.be.
-# - dev: the dev repository (/fdroid-dev/), uploaded by the GitHub Actions job,
-#   which gets this zone's password only. It has a pull zone of its own, which an
-#   edge rule on cdn.velopilot.be forwards /fdroid-dev/ to.
+# - dev: the dev and beta repositories (/fdroid-dev/, /fdroid-beta/), uploaded by
+#   the GitHub Actions jobs, which get this zone's password only. It has a pull zone
+#   of its own, which an edge rule on cdn.velopilot.be forwards both folders to.
 #
 # The velopilot.be DNS zone belongs to velo-pilot/site (its infra/bunny.tf); this
 # only adds the cdn record to it.
@@ -61,8 +61,8 @@ resource "bunnynet_pullzone" "cdn" {
 }
 
 # The dev storage zone's own pull zone, only reached through cdn.velopilot.be. The
-# job can't purge caches (that needs the account API key, which can change anything,
-# release zone included), so both pull zones keep /fdroid-dev/ for a minute only.
+# jobs can't purge caches (that needs the account API key, which can change anything,
+# release zone included), so both pull zones keep its files for a minute only.
 resource "bunnynet_pullzone" "dev" {
   name = local.dev_pullzone_name
 
@@ -80,14 +80,14 @@ resource "bunnynet_pullzone" "dev" {
   }
 }
 
-# /fdroid-dev/ on cdn.velopilot.be comes from the dev pull zone, path unchanged, so
-# the job uploads to fdroid-dev/ in the dev zone. (The OriginStorage action, which
+# /fdroid-dev/ and /fdroid-beta/ on cdn.velopilot.be come from the dev pull zone,
+# path unchanged, so the jobs upload to those folders in the dev zone. (The OriginStorage action, which
 # would skip the second pull zone, rejects every storage zone id with "Storage zone
 # not valid".)
 resource "bunnynet_pullzone_edgerule" "dev" {
   enabled     = true
   pullzone    = bunnynet_pullzone.cdn.id
-  description = "Serve /fdroid-dev/ from the ${local.dev_zone_name} storage zone"
+  description = "Serve /fdroid-dev/ and /fdroid-beta/ from the ${local.dev_zone_name} storage zone"
 
   actions = [
     {
@@ -109,7 +109,7 @@ resource "bunnynet_pullzone_edgerule" "dev" {
     {
       type       = "Url"
       match_type = "MatchAny"
-      patterns   = ["*/fdroid-dev/*"]
+      patterns   = ["*/fdroid-dev/*", "*/fdroid-beta/*"]
       parameter1 = null
       parameter2 = null
     }
