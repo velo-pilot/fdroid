@@ -1,0 +1,9 @@
+# Work folder of the scripts (releases, APKs, the built repository)
+/build/
+__pycache__/
+# OpenTofu (infra/): local state; .terraform.lock.hcl is committed
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan

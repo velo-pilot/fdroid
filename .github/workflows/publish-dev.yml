@@ -1,0 +1,101 @@
+# Builds the VeloPilot dev F-Droid repository from the pre-releases (dev builds) of
+# velo-pilot/android and publishes it on https://cdn.velopilot.be/fdroid-dev/repo.
+#
+# Only the dev repository is published from here. The release repository is signed with a key
+# that stays in Bitwarden and is published from a local checkout with ./release.sh, so GitHub
+# never holds anything that can change it.
+#
+# The job runs in the "dev" environment. Its variables (BUNNY_STORAGE_ZONE, BUNNY_STORAGE_HOST)
+# and secrets (BUNNY_STORAGE_PASSWORD, ANDROID_RELEASES_TOKEN, FDROID_KEYSTORE_BASE64,
+# FDROID_KEYSTORE_PASSWORD) are managed by OpenTofu in infra/github.tf. They give access to the
+# dev storage zone and the dev key only. There's no cache purge: the CDN keeps /fdroid-dev/ for
+# a minute (infra/bunny.tf).
+#
+# A release workflow in velo-pilot/android starts this with a repository_dispatch event of type
+# android-release; the schedule catches pre-releases made without it. Scheduled and dispatched
+# runs stop early when the pre-releases and this repository haven't changed since the last
+# publish (inputs.sha256 on the CDN); pushes to main and "force" always publish.
+
+name: Publish dev
+
+on:
+  push:
+    branches: [main]
+  repository_dispatch:
+    types: [android-release]
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Publish even if nothing changed
+        type: boolean
+        default: false
+
+env:
+  CHANNEL: dev
+  ANDROID_REPO: velo-pilot/android
+  CDN_URL: https://cdn.velopilot.be
+  KEEP_RELEASES: 3
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Debian's fdroidserver is newer than Ubuntu's
+    container: docker.io/library/debian:trixie-slim
+    environment:
+      name: dev
+      url: https://cdn.velopilot.be/fdroid-dev/repo/index.html
+    concurrency:
+      group: fdroid-dev
+      cancel-in-progress: false
+    steps:
+      - name: Install fdroidserver
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends ca-certificates curl fdroidserver > /dev/null
+          fdroid --version
+
+      - uses: actions/checkout@v5
+
+      - name: List pre-releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.ANDROID_RELEASES_TOKEN }}
+        run: python3 scripts/fetch-releases.py list build
+
+      - name: Compare with the published repository
+        id: inputs
+        env:
+          FORCE: ${{ github.event_name == 'push' || inputs.force == true }}
+        run: |
+          hash=$({ find icon.png icon-dev.png metadata scripts -type f -print0 | sort -z | xargs -0 sha256sum; cat build/releases.json; } \
+            | sha256sum | cut -d' ' -f1)
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+          published=$(curl -fsS "$CDN_URL/fdroid-dev/inputs.sha256" 2> /dev/null || true)
+          if [ "$published" = "$hash" ] && [ "$FORCE" != true ]; then
+            echo "Nothing changed since the last publish"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the APKs
+        if: steps.inputs.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.ANDROID_RELEASES_TOKEN }}
+        run: python3 scripts/fetch-releases.py download build
+
+      - name: Build and sign the repository
+        if: steps.inputs.outputs.skip != 'true'
+        env:
+          ANDROID_HOME: /usr/lib/android-sdk
+          FDROID_KEYSTORE_BASE64: ${{ secrets.FDROID_KEYSTORE_BASE64 }}
+          FDROID_KEYSTORE_PASSWORD: ${{ secrets.FDROID_KEYSTORE_PASSWORD }}
+          INPUTS_HASH: ${{ steps.inputs.outputs.hash }}
+        run: python3 scripts/build-repo.py build
+
+      - name: Upload to Bunny Storage
+        if: steps.inputs.outputs.skip != 'true'
+        env:
+          BUNNY_STORAGE_ZONE: ${{ vars.BUNNY_STORAGE_ZONE }}
+          BUNNY_STORAGE_HOST: ${{ vars.BUNNY_STORAGE_HOST }}
+          BUNNY_STORAGE_PASSWORD: ${{ secrets.BUNNY_STORAGE_PASSWORD }}
+        run: python3 scripts/bunny-sync.py build/publish/fdroid-dev fdroid-dev

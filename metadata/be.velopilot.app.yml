@@ -1,0 +1,19 @@
+Categories:
+  - Navigation
+License: GPL-3.0-or-later
+AuthorName: Ward Segers
+WebSite: https://velopilot.be
+SourceCode: https://github.com/osmandapp/OsmAnd
+IssueTracker: https://github.com/osmandapp/OsmAnd/issues
+
+AutoName: VeloPilot
+Summary: OsmAnd with routing for 45 km/h speed pedelecs
+Description: |-
+    VeloPilot is OsmAnd with a built-in speed pedelec profile. It routes like a moped of class P: up
+    to 45 km/h, off the cycle paths and roads that speed pedelecs may not use. Belgian rules are the
+    default; the profile can switch to the generic moped rules of the Netherlands, Germany and France.
+
+    The app installs next to OsmAnd and can use the maps of an installed OsmAnd app instead of
+    downloading them again: set OsmAnd's main storage to "Multiuser storage" and allow
+    "Install unknown apps" under Settings > VeloPilot settings > Maps from OsmAnd. Android only grants
+    access to another app's obb folder with that permission; the app never installs anything.

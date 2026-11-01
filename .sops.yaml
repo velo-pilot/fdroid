@@ -1,0 +1,6 @@
+# Who can decrypt infra/secrets.enc.yaml. After changing this list, run
+#   sops updatekeys infra/secrets.enc.yaml
+creation_rules:
+  - path_regex: (^|/)infra/secrets\.enc\.yaml$
+    # Ward (ward@languagebuddies.be)
+    pgp: BA44E3BE3CB3F0336A6E698E1FCC7F7F1F94A23F
