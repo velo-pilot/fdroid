@@ -3,8 +3,8 @@ Categories:
 License: GPL-3.0-or-later
 AuthorName: Ward Segers
 WebSite: https://velopilot.be
-SourceCode: https://github.com/osmandapp/OsmAnd
-IssueTracker: https://github.com/osmandapp/OsmAnd/issues
+SourceCode: https://github.com/velo-pilot/android
+IssueTracker: https://github.com/velo-pilot/android/issues
 
 AutoName: VeloPilot
 Summary: OsmAnd with routing for 45 km/h speed pedelecs
