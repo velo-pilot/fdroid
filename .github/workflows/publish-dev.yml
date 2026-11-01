@@ -72,7 +72,11 @@ jobs:
             | sha256sum | cut -d' ' -f1)
           echo "hash=$hash" >> "$GITHUB_OUTPUT"
           published=$(curl -fsS "$CDN_URL/fdroid-dev/inputs.sha256" 2> /dev/null || true)
-          if [ "$published" = "$hash" ] && [ "$FORCE" != true ]; then
+          if [ "$(cat build/releases.json)" = "[]" ]; then
+            # Keeps whatever the repository holds until the first pre-release
+            echo "No pre-release to publish yet"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          elif [ "$published" = "$hash" ] && [ "$FORCE" != true ]; then
             echo "Nothing changed since the last publish"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi

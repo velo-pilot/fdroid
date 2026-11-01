@@ -69,6 +69,8 @@ def write_private(path, data):
 
 def build(work, fdroid, folder, repo_name, key_alias, app_id, icon):
     releases = json.loads((work / "releases.json").read_text())
+    if not releases:
+        sys.exit("releases.json lists no release, so there is nothing to publish")
     repo_url = f"{CDN_URL}/{folder}/repo"
     write_private(fdroid / "keystore.p12", base64.b64decode(env("FDROID_KEYSTORE_BASE64")))
     env("FDROID_KEYSTORE_PASSWORD")

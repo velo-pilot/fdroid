@@ -40,6 +40,10 @@ done < <(tofu -chdir=infra output -json release_upload |
 echo ">> Fetching the releases of $ANDROID_REPO"
 rm -rf "$work"
 python3 -I scripts/fetch-releases.py download "$work"
+if [ "$(python3 -c 'import json, sys; print(len(json.load(open(sys.argv[1]))))' "$work/releases.json")" = 0 ]; then
+	echo "Nothing to publish" >&2
+	exit 1
+fi
 
 echo ">> Preparing the fdroidserver container"
 podman build --quiet -t "$image" - < Containerfile > /dev/null

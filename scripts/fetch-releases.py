@@ -8,7 +8,8 @@
 Picks the KEEP_RELEASES newest published releases of the channel that have an APK
 asset, oldest first: full releases for the release repository, pre-releases (dev
 builds) for the dev repository. Drafts are skipped. Each release needs exactly one
-.apk asset; its notes become the version's changelog in F-Droid.
+.apk asset; its notes become the version's changelog in F-Droid. Without any, it
+writes an empty list: there is nothing to publish yet.
 
 Environment:
   CHANNEL         release (default) or dev
@@ -105,7 +106,7 @@ def main():
     releases = list_releases()
     if not releases:
         kind = "pre-release" if CHANNEL == "dev" else "release"
-        sys.exit(f"{REPO} has no published {kind} with an APK")
+        print(f"{REPO} has no published {kind} with an APK yet")
     (out / "releases.json").write_text(json.dumps(releases, indent=2) + "\n")
     for release in releases:
         print(f"{release['tag']}: {release['apk']['name']} ({release['apk']['size'] // 1_000_000} MB)")
